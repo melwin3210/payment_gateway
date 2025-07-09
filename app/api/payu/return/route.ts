@@ -1,63 +1,109 @@
 import { type NextRequest, NextResponse } from "next/server"
+import crypto from "crypto"
 
 export async function POST(request: NextRequest) {
   try {
     console.log("=== PayU Return POST Request ===")
 
-    // Get the request body
-    const body = await request.text()
-    console.log("POST body:", body)
+    // Get the raw request body
+    const rawBody = await request.text()
+    console.log("Raw POST body:", rawBody)
 
-    // Try to parse as JSON first
+    // Parse as form data first
+    const formData = new URLSearchParams(rawBody)
+    const formFields = Object.fromEntries(formData.entries())
+    console.log("Parsed form data:", formFields)
+
+    // Extract the JSON payload from the 'body' field
     let payuData: any = {}
-    try {
-      payuData = JSON.parse(body)
-      console.log("Parsed JSON data:", payuData)
-    } catch {
-      // If not JSON, try to parse as form data
-      const formData = new URLSearchParams(body)
-      payuData = Object.fromEntries(formData.entries())
-      console.log("Parsed form data:", payuData)
+    if (formFields.body) {
+      try {
+        payuData = JSON.parse(formFields.body)
+        console.log("Parsed PayU JSON payload:", payuData)
+      } catch (error) {
+        console.error("Failed to parse PayU JSON payload:", error)
+        payuData = { rawBody: formFields.body }
+      }
     }
 
-    // Get headers for additional info
-    const headers = Object.fromEntries(request.headers.entries())
-    console.log("Request headers:", headers)
+    // Extract signature and verification data
+    const signature = formFields.signature
+    const merchant = formFields.merchant
+    const date = formFields.date
 
-    // Extract payment information
+    console.log("PayU signature verification data:", {
+      signature,
+      merchant,
+      date,
+      hasSignature: !!signature,
+    })
+
+    // TODO: Verify signature for security (optional but recommended)
+    // const isValidSignature = verifyPayUSignature(formFields.body, signature, merchant, date)
+
+    // Extract payment information from the JSON payload
     const paymentInfo = {
-      payuPaymentReference: payuData.payuPaymentReference || payuData.payment_reference || payuData.reference,
-      merchantPaymentReference: payuData.merchantPaymentReference || payuData.merchant_reference || payuData.order_id,
-      status: payuData.status || payuData.payment_status,
-      amount: payuData.amount,
-      currency: payuData.currency,
+      payuPaymentReference: payuData.payuPaymentReference,
+      merchantPaymentReference: payuData.merchantPaymentReference,
+      status: payuData.status,
+      paymentResult: payuData.paymentResult,
+      message: payuData.message,
+      code: payuData.code,
       timestamp: new Date().toISOString(),
+      signature,
+      merchant,
+      date,
+      isSuccess: payuData.status === "SUCCESS" && payuData.paymentResult?.payuResponseCode === "AUTHORIZED",
       rawData: payuData,
     }
 
     console.log("Extracted payment info:", paymentInfo)
 
-    // Store the payment result temporarily (you might want to use a database in production)
-    // For now, we'll just log it and redirect
+    // Store payment result in localStorage-compatible format for the frontend
+    // In production, you'd store this in a database
 
-    // Create redirect URL with payment reference
+    // Create redirect URL with payment information
     const redirectUrl = new URL("/payment/return", request.url)
+
+    // Add essential parameters to the URL
     if (paymentInfo.merchantPaymentReference) {
       redirectUrl.searchParams.set("reference", paymentInfo.merchantPaymentReference)
     }
     if (paymentInfo.status) {
       redirectUrl.searchParams.set("status", paymentInfo.status)
     }
+    if (paymentInfo.payuPaymentReference) {
+      redirectUrl.searchParams.set("payuRef", paymentInfo.payuPaymentReference)
+    }
+    if (paymentInfo.isSuccess) {
+      redirectUrl.searchParams.set("success", "true")
+    }
+    if (paymentInfo.message) {
+      redirectUrl.searchParams.set("message", encodeURIComponent(paymentInfo.message))
+    }
 
     console.log("Redirecting to:", redirectUrl.toString())
+
+    // Log success/failure
+    if (paymentInfo.isSuccess) {
+      console.log("✅ PAYMENT SUCCESS - Authorized payment received")
+    } else {
+      console.log("❌ PAYMENT FAILED - Status:", paymentInfo.status, "Code:", paymentInfo.code)
+    }
 
     // Return a redirect response
     return NextResponse.redirect(redirectUrl.toString())
   } catch (error) {
-    console.error("Error handling PayU return POST:", error)
+    console.error("❌ Error handling PayU return POST:", error)
 
-    // Even if there's an error, redirect to the return page
-    const redirectUrl = new URL("/payment/return?error=processing_failed", request.url)
+    // Even if there's an error, redirect to the return page with error info
+    const redirectUrl = new URL("/payment/return", request.url)
+    redirectUrl.searchParams.set("error", "processing_failed")
+    redirectUrl.searchParams.set(
+      "errorMessage",
+      encodeURIComponent(error instanceof Error ? error.message : "Unknown error"),
+    )
+
     return NextResponse.redirect(redirectUrl.toString())
   }
 }
@@ -81,4 +127,25 @@ export async function GET(request: NextRequest) {
   console.log("GET redirect to:", redirectUrl.toString())
 
   return NextResponse.redirect(redirectUrl.toString())
+}
+
+// Optional: Add signature verification function for security
+function verifyPayUSignature(body: string, signature: string, merchant: string, date: string): boolean {
+  try {
+    // This is a placeholder - you'd need to implement PayU's signature verification
+    // according to their documentation
+    const secretKey = process.env.PAYU_SECRET_KEY!
+
+    // Example signature verification (adjust according to PayU's spec)
+    const stringToHash = merchant + date + body
+    const expectedSignature = crypto.createHmac("sha256", secretKey).update(stringToHash).digest("hex")
+
+    const isValid = signature === expectedSignature
+    console.log("Signature verification:", { isValid, provided: signature, expected: expectedSignature })
+
+    return isValid
+  } catch (error) {
+    console.error("Signature verification error:", error)
+    return false
+  }
 }

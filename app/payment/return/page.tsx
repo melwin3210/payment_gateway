@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { CheckCircle, XCircle, Loader2, RefreshCw } from "lucide-react"
+import { CheckCircle, XCircle, Loader2, RefreshCw, AlertCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 interface PaymentStatus {
@@ -14,6 +14,8 @@ interface PaymentStatus {
   authorization?: {
     authorized: string
   }
+  message?: string
+  isFromCallback?: boolean
 }
 
 export default function PaymentReturnPage() {
@@ -41,12 +43,44 @@ export default function PaymentReturnPage() {
         }
 
         setUrlParams(params)
+
+        // Check if we have callback data from PayU
+        if (params.reference && params.status) {
+          console.log("✅ Found PayU callback data in URL parameters")
+
+          // Create payment status from URL parameters
+          const callbackStatus: PaymentStatus = {
+            merchantPaymentReference: params.reference,
+            payuPaymentReference: params.payuRef || "N/A",
+            status: params.status,
+            message: params.message ? decodeURIComponent(params.message) : undefined,
+            isFromCallback: true,
+          }
+
+          setPaymentStatus(callbackStatus)
+          setIsLoading(false)
+
+          // Show appropriate toast
+          if (params.success === "true" || params.status === "SUCCESS") {
+            toast({
+              title: "Payment Successful!",
+              description: "Your payment has been processed successfully.",
+            })
+          } else {
+            toast({
+              title: "Payment Status",
+              description: `Payment status: ${params.status}`,
+              variant: params.status === "SUCCESS" ? "default" : "destructive",
+            })
+          }
+
+          return // Don't proceed with API status check
+        }
       } catch (error) {
         console.error("Error parsing URL parameters:", error)
-        // Continue without URL params
       }
     }
-  }, [])
+  }, [toast])
 
   const checkPaymentStatus = async (isManualRetry = false) => {
     if (!isManualRetry) {
@@ -57,13 +91,10 @@ export default function PaymentReturnPage() {
     try {
       // Try multiple sources for the payment reference
       const merchantRef =
-        // First try localStorage
         localStorage.getItem("merchantPaymentReference") ||
-        // Then try URL parameters
-        urlParams.merchantPaymentReference ||
         urlParams.reference ||
+        urlParams.merchantPaymentReference ||
         urlParams.orderRef ||
-        // Try other common parameter names PayU might use
         urlParams.merchant_reference ||
         urlParams.order_id
 
@@ -71,7 +102,6 @@ export default function PaymentReturnPage() {
       console.log("Checking payment status for reference:", merchantRef)
 
       if (!merchantRef) {
-        // If no reference found, show a helpful message
         throw new Error(
           "No payment reference found. This usually means you accessed this page directly. Please start a new payment.",
         )
@@ -142,13 +172,15 @@ export default function PaymentReturnPage() {
   }
 
   useEffect(() => {
-    // Wait for URL params to be parsed before checking status
-    const timer = setTimeout(() => {
-      checkPaymentStatus()
-    }, 500)
+    // Only check API status if we don't have callback data
+    if (!paymentStatus && Object.keys(urlParams).length > 0) {
+      const timer = setTimeout(() => {
+        checkPaymentStatus()
+      }, 500)
 
-    return () => clearTimeout(timer)
-  }, [urlParams])
+      return () => clearTimeout(timer)
+    }
+  }, [urlParams, paymentStatus])
 
   const handleManualRetry = () => {
     setRetryCount(0)
@@ -173,7 +205,7 @@ export default function PaymentReturnPage() {
     window.location.href = "/payment"
   }
 
-  if (isLoading && retryCount === 0) {
+  if (isLoading && retryCount === 0 && !paymentStatus) {
     return (
       <div className="container mx-auto py-8">
         <Card className="w-full max-w-md mx-auto">
@@ -237,6 +269,7 @@ export default function PaymentReturnPage() {
   const isSuccess =
     paymentStatus?.status === "AUTHORIZED" ||
     paymentStatus?.status === "CAPTURED" ||
+    paymentStatus?.status === "SUCCESS" ||
     paymentStatus?.authorization?.authorized === "YES"
 
   const isPending =
@@ -297,12 +330,28 @@ export default function PaymentReturnPage() {
                   <span className="font-medium font-mono text-xs">{paymentStatus.merchantPaymentReference}</span>
                 </div>
               )}
+              {paymentStatus.message && (
+                <div className="flex justify-between">
+                  <span>Message:</span>
+                  <span className="font-medium">{paymentStatus.message}</span>
+                </div>
+              )}
               {paymentStatus.amount && (
                 <div className="flex justify-between">
                   <span>Amount:</span>
                   <span className="font-medium">{paymentStatus.amount} RUB</span>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Show if data came from PayU callback */}
+          {paymentStatus?.isFromCallback && (
+            <div className="bg-green-50 border border-green-200 rounded p-3">
+              <div className="flex items-center">
+                <AlertCircle className="h-4 w-4 text-green-600 mr-2" />
+                <p className="text-sm text-green-700">✅ Payment data received directly from PayU callback</p>
+              </div>
             </div>
           )}
 
@@ -331,7 +380,7 @@ export default function PaymentReturnPage() {
           </details>
 
           <div className="flex gap-2">
-            {!isSuccess && (
+            {!isSuccess && !paymentStatus?.isFromCallback && (
               <Button
                 onClick={handleManualRetry}
                 disabled={isLoading}
@@ -342,7 +391,7 @@ export default function PaymentReturnPage() {
                 Check Again
               </Button>
             )}
-            <Button onClick={goHome} className={!isSuccess ? "flex-1" : "w-full"}>
+            <Button onClick={goHome} className={!isSuccess && !paymentStatus?.isFromCallback ? "flex-1" : "w-full"}>
               Return to Home
             </Button>
           </div>
