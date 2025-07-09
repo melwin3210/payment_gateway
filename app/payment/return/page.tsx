@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { CheckCircle, XCircle, Loader2 } from "lucide-react"
 import { useSearchParams } from "next/navigation"
+import { useToast } from "@/hooks/use-toast"
 
 interface PaymentStatus {
   status: string
@@ -17,6 +18,7 @@ export default function PaymentReturnPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const searchParams = useSearchParams()
+  const { toast } = useToast()
 
   useEffect(() => {
     const checkPaymentStatus = async () => {
@@ -29,15 +31,31 @@ export default function PaymentReturnPage() {
           throw new Error("No payment reference found")
         }
 
+        // Wait a bit longer before first check to allow payment processing
+        await new Promise((resolve) => setTimeout(resolve, 3000))
+
         const response = await fetch(`/api/payu/status/${merchantRef}`)
         const result = await response.json()
 
         if (result.success) {
+          const status = result.data.status || result.data.authorization?.authorized
+
+          // If payment is still pending, keep checking
+          if (status === "PENDING" || status === "PENDING_AUTHORIZATION") {
+            console.log("Payment still pending, will retry...")
+            // Retry after 5 seconds
+            setTimeout(() => {
+              window.location.reload()
+            }, 5000)
+            return
+          }
+
           setPaymentStatus(result.data)
         } else {
           throw new Error(result.error || "Failed to check payment status")
         }
       } catch (err) {
+        console.error("Status check error:", err)
         setError(err instanceof Error ? err.message : "An error occurred")
       } finally {
         setIsLoading(false)
@@ -47,13 +65,49 @@ export default function PaymentReturnPage() {
     checkPaymentStatus()
   }, [searchParams])
 
+  const recheckStatus = async () => {
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      const merchantRef =
+        searchParams.get("merchantPaymentReference") || localStorage.getItem("merchantPaymentReference")
+
+      if (!merchantRef) {
+        throw new Error("No payment reference found")
+      }
+
+      const response = await fetch(`/api/payu/status/${merchantRef}`)
+      const result = await response.json()
+
+      if (result.success) {
+        setPaymentStatus(result.data)
+
+        toast({
+          title: "Status Updated",
+          description: `Payment status: ${result.data.status}`,
+        })
+      } else {
+        throw new Error(result.error || "Failed to check payment status")
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="container mx-auto py-8">
         <Card className="w-full max-w-md mx-auto">
-          <CardContent className="flex items-center justify-center py-8">
+          <CardContent className="flex flex-col items-center justify-center py-8 space-y-4">
             <Loader2 className="h-8 w-8 animate-spin" />
-            <span className="ml-2">Checking payment status...</span>
+            <div className="text-center">
+              <h3 className="font-semibold">Checking payment status...</h3>
+              <p className="text-sm text-muted-foreground mt-2">Please wait while we verify your payment with PayU</p>
+              <p className="text-xs text-muted-foreground mt-1">This may take a few moments</p>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -65,16 +119,27 @@ export default function PaymentReturnPage() {
       <div className="container mx-auto py-8">
         <Card className="w-full max-w-md mx-auto">
           <CardHeader>
-            <CardTitle className="flex items-center text-red-600">
+            <CardTitle className="flex items-center text-orange-600">
               <XCircle className="mr-2 h-5 w-5" />
-              Error
+              Status Check Issue
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <p>{error}</p>
-            <Button className="mt-4" onClick={() => (window.location.href = "/payment")}>
-              Try Again
-            </Button>
+          <CardContent className="space-y-4">
+            <p className="text-sm">{error}</p>
+            <div className="bg-blue-50 border border-blue-200 rounded p-3">
+              <p className="text-sm text-blue-700 mb-2">
+                If you just completed payment on PayU, it may take a moment to process.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={recheckStatus} disabled={isLoading} className="flex-1">
+                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Check Status Again
+              </Button>
+              <Button variant="outline" onClick={() => (window.location.href = "/payment")} className="flex-1">
+                New Payment
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>

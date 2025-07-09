@@ -117,13 +117,19 @@ export default function PayUPaymentForm() {
 
   const handleRedirectToPayment = () => {
     if (paymentResult?.data?.paymentResult?.url) {
-      // Open payment page in new tab
-      window.open(paymentResult.data.paymentResult.url, "_blank")
+      // Store additional info for status checking
+      localStorage.setItem("paymentStartTime", Date.now().toString())
+      localStorage.setItem("paymentAmount", paymentResult.data.amount)
 
-      // Redirect current page to return URL to wait for completion
-      setTimeout(() => {
-        window.location.href = "/payment/return"
-      }, 1000)
+      // Show instructions
+      toast({
+        title: "Redirecting to PayU",
+        description: "Complete your payment and return to this page",
+        duration: 5000,
+      })
+
+      // Open payment page in same tab for better UX
+      window.location.href = paymentResult.data.paymentResult.url
     }
   }
 
