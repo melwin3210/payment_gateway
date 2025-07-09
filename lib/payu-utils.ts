@@ -65,6 +65,16 @@ export function generateSignature(
   const bodyHash = crypto.createHash("md5").update(body).digest("hex")
   const stringToHash = merchantCode + date + method + path + queryString + bodyHash
 
+  console.log("Signature generation details:", {
+    merchantCode,
+    date,
+    method,
+    path,
+    queryString,
+    bodyHash,
+    stringToHash,
+  })
+
   return crypto.createHmac("sha256", secretKey).update(stringToHash).digest("hex")
 }
 
@@ -105,30 +115,20 @@ export function createPayUHeaders(
   return headers
 }
 
-// Add this function after the existing utility functions
-export function generatePayUDate(): string {
-  // PayU typically expects date in GMT format: "EEE, dd MMM yyyy HH:mm:ss GMT"
-  // Example: "Mon, 09 Dec 2024 14:30:45 GMT"
+// Multiple date format generators for testing
+export function generatePayUDateRFC2822(): string {
+  // RFC 2822 format: "Mon, 09 Dec 2024 14:30:45 GMT"
   const now = new Date()
-
-  // Format: "EEE, dd MMM yyyy HH:mm:ss GMT"
-  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-
-  const dayName = dayNames[now.getUTCDay()]
-  const day = now.getUTCDate().toString().padStart(2, "0")
-  const monthName = monthNames[now.getUTCMonth()]
-  const year = now.getUTCFullYear()
-  const hours = now.getUTCHours().toString().padStart(2, "0")
-  const minutes = now.getUTCMinutes().toString().padStart(2, "0")
-  const seconds = now.getUTCSeconds().toString().padStart(2, "0")
-
-  return `${dayName}, ${day} ${monthName} ${year} ${hours}:${minutes}:${seconds} GMT`
+  return now.toUTCString()
 }
 
-// Alternative simpler format that some PayU implementations use
+export function generatePayUDateISO(): string {
+  // ISO 8601 format: "2024-12-09T14:30:45.123Z"
+  return new Date().toISOString()
+}
+
 export function generatePayUDateSimple(): string {
-  // Some PayU APIs expect: "yyyy-MM-dd HH:mm:ss"
+  // Simple format: "2024-12-09 14:30:45"
   const now = new Date()
   const year = now.getUTCFullYear()
   const month = (now.getUTCMonth() + 1).toString().padStart(2, "0")
@@ -140,9 +140,49 @@ export function generatePayUDateSimple(): string {
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
 }
 
-// ISO format with timezone
-export function generatePayUDateISO(): string {
-  return new Date().toISOString()
+export function generatePayUDateCustom(): string {
+  // Custom format without milliseconds: "2024-12-09T14:30:45Z"
+  const now = new Date()
+  const year = now.getUTCFullYear()
+  const month = (now.getUTCMonth() + 1).toString().padStart(2, "0")
+  const day = now.getUTCDate().toString().padStart(2, "0")
+  const hours = now.getUTCHours().toString().padStart(2, "0")
+  const minutes = now.getUTCMinutes().toString().padStart(2, "0")
+  const seconds = now.getUTCSeconds().toString().padStart(2, "0")
+
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}Z`
+}
+
+export function generatePayUDateUnix(): string {
+  // Unix timestamp as string
+  return Math.floor(Date.now() / 1000).toString()
+}
+
+export function generatePayUDateMillis(): string {
+  // Unix timestamp with milliseconds
+  return Date.now().toString()
+}
+
+// Try different date formats in order of likelihood
+export function generatePayUDate(
+  format: "rfc2822" | "iso" | "simple" | "custom" | "unix" | "millis" = "rfc2822",
+): string {
+  switch (format) {
+    case "rfc2822":
+      return generatePayUDateRFC2822()
+    case "iso":
+      return generatePayUDateISO()
+    case "simple":
+      return generatePayUDateSimple()
+    case "custom":
+      return generatePayUDateCustom()
+    case "unix":
+      return generatePayUDateUnix()
+    case "millis":
+      return generatePayUDateMillis()
+    default:
+      return generatePayUDateRFC2822()
+  }
 }
 
 // Create a custom fetch function with SSL options for development
