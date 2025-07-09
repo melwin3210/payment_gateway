@@ -1,4 +1,5 @@
 import crypto from "crypto"
+import fetch from "node-fetch"
 
 export interface PayUConfig {
   merchantCode: string
@@ -102,4 +103,30 @@ export function createPayUHeaders(
   }
 
   return headers
+}
+
+// Create a custom fetch function with SSL options for development
+export async function secureApiCall(url: string, options: RequestInit): Promise<Response> {
+  // For development environment, we might need to handle SSL differently
+  if (process.env.NODE_ENV === "development") {
+    // Import https module for Node.js specific SSL handling
+    const https = await import("https")
+
+    // Create a custom agent that ignores SSL certificate errors (ONLY for development)
+    const agent = new https.Agent({
+      rejectUnauthorized: false, // This bypasses SSL certificate validation
+    })
+
+    // Add the agent to the fetch options
+    const fetchOptions = {
+      ...options,
+      // @ts-ignore - Node.js specific property
+      agent,
+    }
+
+    return fetch(url, fetchOptions)
+  }
+
+  // For production, use normal fetch
+  return fetch(url, options)
 }

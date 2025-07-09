@@ -1,5 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { generateSignature, createPayUHeaders, getPayUConfig, type RefundRequest } from "@/lib/payu-utils"
+import {
+  generateSignature,
+  createPayUHeaders,
+  getPayUConfig,
+  secureApiCall,
+  type RefundRequest,
+} from "@/lib/payu-utils"
 
 export async function POST(request: NextRequest) {
   try {
@@ -31,18 +37,25 @@ export async function POST(request: NextRequest) {
     // Create headers
     const headers = createPayUHeaders(config.merchantCode, signature, requestDate)
 
-    // Make request to PayU
-    const response = await fetch(`${config.baseUrl}${path}`, {
+    console.log("Making PayU refund request to:", `${config.baseUrl}${path}`)
+
+    // Make request to PayU using secure API call
+    const response = await secureApiCall(`${config.baseUrl}${path}`, {
       method: "POST",
       headers,
       body: requestBody,
     })
 
+    console.log("PayU refund response status:", response.status)
+
     if (!response.ok) {
-      throw new Error(`PayU API error: ${response.status}`)
+      const errorText = await response.text()
+      console.error("PayU refund error response:", errorText)
+      throw new Error(`PayU API error: ${response.status} - ${errorText}`)
     }
 
     const refundResponse = await response.json()
+    console.log("PayU refund success response:", refundResponse)
 
     return NextResponse.json({
       success: true,
@@ -50,6 +63,19 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error("PayU refund error:", error)
-    return NextResponse.json({ success: false, error: "Payment refund failed" }, { status: 500 })
+
+    let errorMessage = "Payment refund failed"
+    if (error instanceof Error) {
+      errorMessage = error.message
+    }
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: errorMessage,
+        details: process.env.NODE_ENV === "development" ? error : undefined,
+      },
+      { status: 500 },
+    )
   }
 }

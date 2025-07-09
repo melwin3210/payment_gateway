@@ -5,6 +5,7 @@ import {
   generateIdempotencyKey,
   createPayUHeaders,
   getPayUConfig,
+  secureApiCall,
   type PaymentRequest,
   type PaymentResponse,
 } from "@/lib/payu-utils"
@@ -57,18 +58,28 @@ export async function POST(request: NextRequest) {
     // Create headers
     const headers = createPayUHeaders(config.merchantCode, signature, requestDate, idempotencyKey)
 
-    // Make request to PayU
-    const response = await fetch(`${config.baseUrl}${path}`, {
+    console.log("Making PayU API request to:", `${config.baseUrl}${path}`)
+    console.log("Request headers:", headers)
+    console.log("Request body:", requestBody)
+
+    // Make request to PayU using secure API call
+    const response = await secureApiCall(`${config.baseUrl}${path}`, {
       method: "POST",
       headers,
       body: requestBody,
     })
 
+    console.log("PayU API response status:", response.status)
+    console.log("PayU API response headers:", Object.fromEntries(response.headers.entries()))
+
     if (!response.ok) {
-      throw new Error(`PayU API error: ${response.status}`)
+      const errorText = await response.text()
+      console.error("PayU API error response:", errorText)
+      throw new Error(`PayU API error: ${response.status} - ${errorText}`)
     }
 
     const paymentResponse: PaymentResponse = await response.json()
+    console.log("PayU API success response:", paymentResponse)
 
     return NextResponse.json({
       success: true,
@@ -77,6 +88,26 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error("PayU authorization error:", error)
-    return NextResponse.json({ success: false, error: "Payment authorization failed" }, { status: 500 })
+
+    // Provide more detailed error information
+    let errorMessage = "Payment authorization failed"
+    if (error instanceof Error) {
+      errorMessage = error.message
+      console.error("Error details:", {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+        cause: error.cause,
+      })
+    }
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: errorMessage,
+        details: process.env.NODE_ENV === "development" ? error : undefined,
+      },
+      { status: 500 },
+    )
   }
 }

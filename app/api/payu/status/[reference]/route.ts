@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { generateSignature, createPayUHeaders, getPayUConfig } from "@/lib/payu-utils"
+import { generateSignature, createPayUHeaders, getPayUConfig, secureApiCall } from "@/lib/payu-utils"
 
 export async function GET(request: NextRequest, { params }: { params: { reference: string } }) {
   try {
@@ -13,17 +13,24 @@ export async function GET(request: NextRequest, { params }: { params: { referenc
     // Create headers (no idempotency key for GET)
     const headers = createPayUHeaders(config.merchantCode, signature, requestDate)
 
-    // Make request to PayU
-    const response = await fetch(`${config.baseUrl}${path}`, {
+    console.log("Making PayU status request to:", `${config.baseUrl}${path}`)
+
+    // Make request to PayU using secure API call
+    const response = await secureApiCall(`${config.baseUrl}${path}`, {
       method: "GET",
       headers,
     })
 
+    console.log("PayU status response status:", response.status)
+
     if (!response.ok) {
-      throw new Error(`PayU API error: ${response.status}`)
+      const errorText = await response.text()
+      console.error("PayU status error response:", errorText)
+      throw new Error(`PayU API error: ${response.status} - ${errorText}`)
     }
 
     const statusResponse = await response.json()
+    console.log("PayU status success response:", statusResponse)
 
     return NextResponse.json({
       success: true,
@@ -31,6 +38,19 @@ export async function GET(request: NextRequest, { params }: { params: { referenc
     })
   } catch (error) {
     console.error("PayU status check error:", error)
-    return NextResponse.json({ success: false, error: "Status check failed" }, { status: 500 })
+
+    let errorMessage = "Status check failed"
+    if (error instanceof Error) {
+      errorMessage = error.message
+    }
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: errorMessage,
+        details: process.env.NODE_ENV === "development" ? error : undefined,
+      },
+      { status: 500 },
+    )
   }
 }
