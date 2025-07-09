@@ -8,7 +8,6 @@ import {
   secureApiCall,
   generatePayUDate,
   type PaymentRequest,
-  type PaymentResponse,
 } from "@/lib/payu-utils"
 
 export async function POST(request: NextRequest) {
@@ -16,22 +15,17 @@ export async function POST(request: NextRequest) {
     const config = getPayUConfig()
     const body = await request.json()
 
-    // Generate unique references
     const merchantPaymentReference = generateMerchantReference()
     const idempotencyKey = generateIdempotencyKey()
-    const requestDate = generatePayUDate() // Use the working custom format
+    const requestDate = generatePayUDate()
 
-    console.log("Generated request date:", requestDate)
-    console.log("Using custom date format (working format)")
-
-    // Prepare payment request
     const paymentRequest: PaymentRequest = {
       merchantPaymentReference,
       currency: body.currency || "RUB",
       returnUrl: body.returnUrl,
       authorization: {
-        paymentMethod: body.paymentMethod || "CCVISAMC",
-        usePaymentPage: body.paymentMethod === "CCVISAMC" ? "YES" : undefined,
+        paymentMethod: "CCVISAMC",
+        usePaymentPage: "YES",
       },
       client: {
         billing: {
@@ -48,7 +42,6 @@ export async function POST(request: NextRequest) {
     const requestBody = JSON.stringify(paymentRequest)
     const path = "/api/v4/payments/authorize"
 
-    // Generate signature
     const signature = generateSignature(
       config.merchantCode,
       config.secretKey,
@@ -59,24 +52,16 @@ export async function POST(request: NextRequest) {
       requestBody,
     )
 
-    // Create headers
     const headers = createPayUHeaders(config.merchantCode, signature, requestDate, idempotencyKey)
 
-    console.log("Making PayU API request to:", `${config.baseUrl}${path}`)
-
-    // Make request to PayU using secure API call
     const response = await secureApiCall(`${config.baseUrl}${path}`, {
       method: "POST",
       headers,
       body: requestBody,
     })
 
-    console.log("PayU API response status:", response.status)
-
     if (response.ok) {
-      const paymentResponse: PaymentResponse = await response.json()
-      console.log("PayU API success response:", paymentResponse)
-
+      const paymentResponse = await response.json()
       return NextResponse.json({
         success: true,
         data: paymentResponse,
@@ -84,22 +69,13 @@ export async function POST(request: NextRequest) {
       })
     } else {
       const errorText = await response.text()
-      console.error("PayU API error response:", errorText)
       throw new Error(`PayU API error: ${response.status} - ${errorText}`)
     }
   } catch (error) {
-    console.error("PayU authorization error:", error)
-
-    let errorMessage = "Payment authorization failed"
-    if (error instanceof Error) {
-      errorMessage = error.message
-    }
-
     return NextResponse.json(
       {
         success: false,
-        error: errorMessage,
-        details: process.env.NODE_ENV === "development" ? error : undefined,
+        error: error instanceof Error ? error.message : "Payment authorization failed",
       },
       { status: 500 },
     )
