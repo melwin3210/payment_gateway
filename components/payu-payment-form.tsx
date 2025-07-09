@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Loader2, CreditCard, Smartphone, Banknote } from "lucide-react"
+import { Loader2, CreditCard, Smartphone, Banknote, ExternalLink } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 interface PaymentFormData {
@@ -29,15 +29,15 @@ interface PaymentFormData {
 
 export default function PayUPaymentForm() {
   const [formData, setFormData] = useState<PaymentFormData>({
-    firstName: "",
-    lastName: "",
-    email: "",
-    phone: "",
+    firstName: "John",
+    lastName: "Doe",
+    email: "john.doe@example.com",
+    phone: "+7-9123456789",
     countryCode: "RU",
     paymentMethod: "CCVISAMC",
     products: [
       {
-        name: "Sample Product",
+        name: "Test Product",
         sku: "PROD001",
         unitPrice: "1000.00",
         quantity: "1",
@@ -46,6 +46,7 @@ export default function PayUPaymentForm() {
   })
 
   const [isLoading, setIsLoading] = useState(false)
+  const [paymentResult, setPaymentResult] = useState<any>(null)
   const { toast } = useToast()
 
   const paymentMethods = [
@@ -63,6 +64,7 @@ export default function PayUPaymentForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
+    setPaymentResult(null)
 
     try {
       const response = await fetch("/api/payu/authorize", {
@@ -88,24 +90,16 @@ export default function PayUPaymentForm() {
       const result = await response.json()
 
       if (result.success) {
+        setPaymentResult(result)
+
+        // Store payment reference for status checking
+        localStorage.setItem("payuPaymentReference", result.data.payuPaymentReference)
+        localStorage.setItem("merchantPaymentReference", result.merchantPaymentReference)
+
         toast({
-          title: "Payment Initiated",
-          description: "Redirecting to payment page...",
+          title: "Payment Initiated Successfully!",
+          description: `Payment reference: ${result.data.payuPaymentReference}`,
         })
-
-        // If there's a redirect URL, redirect the user
-        if (result.data.redirectUrl) {
-          window.location.href = result.data.redirectUrl
-        } else {
-          // Store payment reference for status checking
-          localStorage.setItem("payuPaymentReference", result.data.payuPaymentReference)
-          localStorage.setItem("merchantPaymentReference", result.merchantPaymentReference)
-
-          toast({
-            title: "Payment Created",
-            description: `Payment reference: ${result.data.payuPaymentReference}`,
-          })
-        }
       } else {
         throw new Error(result.error || "Payment failed")
       }
@@ -119,6 +113,73 @@ export default function PayUPaymentForm() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleRedirectToPayment = () => {
+    if (paymentResult?.data?.paymentResult?.url) {
+      // Open payment page in new tab
+      window.open(paymentResult.data.paymentResult.url, "_blank")
+
+      // Redirect current page to return URL to wait for completion
+      setTimeout(() => {
+        window.location.href = "/payment/return"
+      }, 1000)
+    }
+  }
+
+  if (paymentResult) {
+    return (
+      <Card className="w-full max-w-2xl mx-auto">
+        <CardHeader>
+          <CardTitle className="text-green-600">✅ Payment Created Successfully!</CardTitle>
+          <CardDescription>Your payment has been initialized with PayU</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+            <h3 className="font-semibold mb-2">Payment Details:</h3>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span>PayU Reference:</span>
+                <span className="font-mono">{paymentResult.data.payuPaymentReference}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Merchant Reference:</span>
+                <span className="font-mono">{paymentResult.merchantPaymentReference}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Status:</span>
+                <span className="font-semibold">{paymentResult.data.status}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Authorization:</span>
+                <span className="text-orange-600 font-semibold">{paymentResult.data.authorization.authorized}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Amount:</span>
+                <span className="font-semibold">{paymentResult.data.amount} RUB</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <h3 className="font-semibold mb-2">Next Steps:</h3>
+            <p className="text-sm text-blue-700 mb-3">
+              Click the button below to complete your payment on PayU's secure payment page.
+            </p>
+            <Button onClick={handleRedirectToPayment} className="w-full" size="lg">
+              <ExternalLink className="mr-2 h-4 w-4" />
+              Complete Payment on PayU
+            </Button>
+          </div>
+
+          <div className="text-xs text-gray-500">
+            <p>• You will be redirected to PayU's secure payment page</p>
+            <p>• After payment, you'll return to see the final status</p>
+            <p>• This is a sandbox environment - use test card details</p>
+          </div>
+        </CardContent>
+      </Card>
+    )
   }
 
   return (
@@ -249,10 +310,10 @@ export default function PayUPaymentForm() {
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Processing Payment...
+                Creating Payment...
               </>
             ) : (
-              "Pay Now"
+              "Create Payment"
             )}
           </Button>
         </CardFooter>

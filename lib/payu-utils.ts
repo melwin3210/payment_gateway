@@ -115,32 +115,8 @@ export function createPayUHeaders(
   return headers
 }
 
-// Multiple date format generators for testing
-export function generatePayUDateRFC2822(): string {
-  // RFC 2822 format: "Mon, 09 Dec 2024 14:30:45 GMT"
-  const now = new Date()
-  return now.toUTCString()
-}
-
-export function generatePayUDateISO(): string {
-  // ISO 8601 format: "2024-12-09T14:30:45.123Z"
-  return new Date().toISOString()
-}
-
-export function generatePayUDateSimple(): string {
-  // Simple format: "2024-12-09 14:30:45"
-  const now = new Date()
-  const year = now.getUTCFullYear()
-  const month = (now.getUTCMonth() + 1).toString().padStart(2, "0")
-  const day = now.getUTCDate().toString().padStart(2, "0")
-  const hours = now.getUTCHours().toString().padStart(2, "0")
-  const minutes = now.getUTCMinutes().toString().padStart(2, "0")
-  const seconds = now.getUTCSeconds().toString().padStart(2, "0")
-
-  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
-}
-
-export function generatePayUDateCustom(): string {
+// Use the working "custom" format that was successful
+export function generatePayUDate(): string {
   // Custom format without milliseconds: "2024-12-09T14:30:45Z"
   const now = new Date()
   const year = now.getUTCFullYear()
@@ -153,36 +129,26 @@ export function generatePayUDateCustom(): string {
   return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}Z`
 }
 
-export function generatePayUDateUnix(): string {
-  // Unix timestamp as string
-  return Math.floor(Date.now() / 1000).toString()
+// Keep other date format functions for testing
+export function generatePayUDateRFC2822(): string {
+  const now = new Date()
+  return now.toUTCString()
 }
 
-export function generatePayUDateMillis(): string {
-  // Unix timestamp with milliseconds
-  return Date.now().toString()
+export function generatePayUDateISO(): string {
+  return new Date().toISOString()
 }
 
-// Try different date formats in order of likelihood
-export function generatePayUDate(
-  format: "rfc2822" | "iso" | "simple" | "custom" | "unix" | "millis" = "rfc2822",
-): string {
-  switch (format) {
-    case "rfc2822":
-      return generatePayUDateRFC2822()
-    case "iso":
-      return generatePayUDateISO()
-    case "simple":
-      return generatePayUDateSimple()
-    case "custom":
-      return generatePayUDateCustom()
-    case "unix":
-      return generatePayUDateUnix()
-    case "millis":
-      return generatePayUDateMillis()
-    default:
-      return generatePayUDateRFC2822()
-  }
+export function generatePayUDateSimple(): string {
+  const now = new Date()
+  const year = now.getUTCFullYear()
+  const month = (now.getUTCMonth() + 1).toString().padStart(2, "0")
+  const day = now.getUTCDate().toString().padStart(2, "0")
+  const hours = now.getUTCHours().toString().padStart(2, "0")
+  const minutes = now.getUTCMinutes().toString().padStart(2, "0")
+  const seconds = now.getUTCSeconds().toString().padStart(2, "0")
+
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
 }
 
 // Create a custom fetch function with SSL options for development

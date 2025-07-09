@@ -47,6 +47,18 @@ export default function PayUDebugPanel() {
     setLoading(false)
   }
 
+  const testDateFormats = async () => {
+    setLoading(true)
+    try {
+      const response = await fetch("/api/payu/test-date-formats", { method: "POST" })
+      const data = await response.json()
+      setTestResult(data)
+    } catch (error) {
+      console.error("Date format test failed:", error)
+    }
+    setLoading(false)
+  }
+
   return (
     <div className="container mx-auto py-8 space-y-6">
       <Card>
@@ -64,6 +76,9 @@ export default function PayUDebugPanel() {
             </Button>
             <Button onClick={runSimpleTest} disabled={loading}>
               Run Simple Test
+            </Button>
+            <Button onClick={testDateFormats} disabled={loading}>
+              Test Date Formats
             </Button>
           </div>
 
