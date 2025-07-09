@@ -67,6 +67,12 @@ export default function PayUPaymentForm() {
     setPaymentResult(null)
 
     try {
+      // Create a proper return URL
+      const baseUrl = window.location.origin
+      const returnUrl = `${baseUrl}/payment/return`
+
+      console.log("Creating payment with return URL:", returnUrl)
+
       const response = await fetch("/api/payu/authorize", {
         method: "POST",
         headers: {
@@ -75,7 +81,7 @@ export default function PayUPaymentForm() {
         body: JSON.stringify({
           paymentMethod: formData.paymentMethod,
           currency: "RUB",
-          returnUrl: `${window.location.origin}/payment/return`,
+          returnUrl: returnUrl,
           client: {
             firstName: formData.firstName,
             lastName: formData.lastName,
@@ -88,6 +94,7 @@ export default function PayUPaymentForm() {
       })
 
       const result = await response.json()
+      console.log("Payment creation result:", result)
 
       if (result.success) {
         setPaymentResult(result)
@@ -95,6 +102,8 @@ export default function PayUPaymentForm() {
         // Store payment reference for status checking
         localStorage.setItem("payuPaymentReference", result.data.payuPaymentReference)
         localStorage.setItem("merchantPaymentReference", result.merchantPaymentReference)
+        localStorage.setItem("paymentStartTime", Date.now().toString())
+        localStorage.setItem("paymentAmount", result.data.amount || "1000.00")
 
         toast({
           title: "Payment Initiated Successfully!",
@@ -117,19 +126,24 @@ export default function PayUPaymentForm() {
 
   const handleRedirectToPayment = () => {
     if (paymentResult?.data?.paymentResult?.url) {
-      // Store additional info for status checking
-      localStorage.setItem("paymentStartTime", Date.now().toString())
-      localStorage.setItem("paymentAmount", paymentResult.data.amount)
+      console.log("Redirecting to PayU URL:", paymentResult.data.paymentResult.url)
 
-      // Show instructions
       toast({
         title: "Redirecting to PayU",
-        description: "Complete your payment and return to this page",
-        duration: 5000,
+        description: "Complete your payment and you'll be redirected back",
+        duration: 3000,
       })
 
-      // Open payment page in same tab for better UX
-      window.location.href = paymentResult.data.paymentResult.url
+      // Use window.location.href for better compatibility
+      setTimeout(() => {
+        window.location.href = paymentResult.data.paymentResult.url
+      }, 1000)
+    } else {
+      toast({
+        title: "Error",
+        description: "Payment URL not found. Please try again.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -146,11 +160,11 @@ export default function PayUPaymentForm() {
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span>PayU Reference:</span>
-                <span className="font-mono">{paymentResult.data.payuPaymentReference}</span>
+                <span className="font-mono text-xs">{paymentResult.data.payuPaymentReference}</span>
               </div>
               <div className="flex justify-between">
                 <span>Merchant Reference:</span>
-                <span className="font-mono">{paymentResult.merchantPaymentReference}</span>
+                <span className="font-mono text-xs">{paymentResult.merchantPaymentReference}</span>
               </div>
               <div className="flex justify-between">
                 <span>Status:</span>
@@ -158,11 +172,13 @@ export default function PayUPaymentForm() {
               </div>
               <div className="flex justify-between">
                 <span>Authorization:</span>
-                <span className="text-orange-600 font-semibold">{paymentResult.data.authorization.authorized}</span>
+                <span className="text-orange-600 font-semibold">
+                  {paymentResult.data.authorization?.authorized || "PENDING"}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span>Amount:</span>
-                <span className="font-semibold">{paymentResult.data.amount} RUB</span>
+                <span className="font-semibold">{paymentResult.data.amount || "1000.00"} RUB</span>
               </div>
             </div>
           </div>
@@ -178,10 +194,11 @@ export default function PayUPaymentForm() {
             </Button>
           </div>
 
-          <div className="text-xs text-gray-500">
+          <div className="text-xs text-gray-500 space-y-1">
             <p>• You will be redirected to PayU's secure payment page</p>
-            <p>• After payment, you'll return to see the final status</p>
+            <p>• After payment, you'll automatically return to see the final status</p>
             <p>• This is a sandbox environment - use test card details</p>
+            <p>• Payment URL: {paymentResult.data.paymentResult?.url ? "✅ Ready" : "❌ Missing"}</p>
           </div>
         </CardContent>
       </Card>

@@ -1,9 +1,9 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, Suspense } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { CheckCircle, XCircle, Loader2 } from "lucide-react"
+import { CheckCircle, XCircle, Loader2, RefreshCw } from "lucide-react"
 import { useSearchParams } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 
@@ -11,93 +11,114 @@ interface PaymentStatus {
   status: string
   payuPaymentReference: string
   merchantPaymentReference: string
+  amount?: string
+  authorization?: {
+    authorized: string
+  }
 }
 
-export default function PaymentReturnPage() {
+function PaymentReturnContent() {
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
   const searchParams = useSearchParams()
   const { toast } = useToast()
 
-  useEffect(() => {
-    const checkPaymentStatus = async () => {
-      try {
-        // Get payment reference from URL params or localStorage
-        const merchantRef =
-          searchParams.get("merchantPaymentReference") || localStorage.getItem("merchantPaymentReference")
-
-        if (!merchantRef) {
-          throw new Error("No payment reference found")
-        }
-
-        // Wait a bit longer before first check to allow payment processing
-        await new Promise((resolve) => setTimeout(resolve, 3000))
-
-        const response = await fetch(`/api/payu/status/${merchantRef}`)
-        const result = await response.json()
-
-        if (result.success) {
-          const status = result.data.status || result.data.authorization?.authorized
-
-          // If payment is still pending, keep checking
-          if (status === "PENDING" || status === "PENDING_AUTHORIZATION") {
-            console.log("Payment still pending, will retry...")
-            // Retry after 5 seconds
-            setTimeout(() => {
-              window.location.reload()
-            }, 5000)
-            return
-          }
-
-          setPaymentStatus(result.data)
-        } else {
-          throw new Error(result.error || "Failed to check payment status")
-        }
-      } catch (err) {
-        console.error("Status check error:", err)
-        setError(err instanceof Error ? err.message : "An error occurred")
-      } finally {
-        setIsLoading(false)
-      }
+  const checkPaymentStatus = async (isManualRetry = false) => {
+    if (!isManualRetry) {
+      setIsLoading(true)
     }
-
-    checkPaymentStatus()
-  }, [searchParams])
-
-  const recheckStatus = async () => {
-    setIsLoading(true)
     setError(null)
 
     try {
+      // Get payment reference from URL params or localStorage
       const merchantRef =
-        searchParams.get("merchantPaymentReference") || localStorage.getItem("merchantPaymentReference")
+        searchParams.get("merchantPaymentReference") ||
+        searchParams.get("reference") ||
+        localStorage.getItem("merchantPaymentReference")
+
+      console.log("Checking payment status for reference:", merchantRef)
 
       if (!merchantRef) {
-        throw new Error("No payment reference found")
+        throw new Error("No payment reference found. Please start a new payment.")
+      }
+
+      // For first check, wait a bit to allow payment processing
+      if (!isManualRetry && retryCount === 0) {
+        console.log("First check - waiting 3 seconds...")
+        await new Promise((resolve) => setTimeout(resolve, 3000))
       }
 
       const response = await fetch(`/api/payu/status/${merchantRef}`)
       const result = await response.json()
 
+      console.log("Payment status response:", result)
+
       if (result.success) {
+        const status = result.data.status || result.data.authorization?.authorized || "UNKNOWN"
+
+        console.log("Payment status:", status)
+
+        // Check if payment is still processing
+        if ((status === "PENDING" || status === "PENDING_AUTHORIZATION" || status === "CREATED") && retryCount < 5) {
+          console.log(`Payment still pending (attempt ${retryCount + 1}/5), will retry...`)
+
+          toast({
+            title: "Payment Processing",
+            description: `Checking payment status... (${retryCount + 1}/5)`,
+          })
+
+          // Retry after 5 seconds
+          setTimeout(() => {
+            setRetryCount((prev) => prev + 1)
+            checkPaymentStatus()
+          }, 5000)
+          return
+        }
+
         setPaymentStatus(result.data)
 
-        toast({
-          title: "Status Updated",
-          description: `Payment status: ${result.data.status}`,
-        })
+        if (status === "AUTHORIZED" || status === "CAPTURED") {
+          toast({
+            title: "Payment Successful!",
+            description: "Your payment has been processed successfully.",
+          })
+        } else if (status === "FAILED" || status === "DECLINED") {
+          toast({
+            title: "Payment Failed",
+            description: "Your payment could not be processed.",
+            variant: "destructive",
+          })
+        }
       } else {
         throw new Error(result.error || "Failed to check payment status")
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred")
+      console.error("Status check error:", err)
+      const errorMessage = err instanceof Error ? err.message : "An error occurred while checking payment status"
+      setError(errorMessage)
+
+      toast({
+        title: "Status Check Error",
+        description: errorMessage,
+        variant: "destructive",
+      })
     } finally {
       setIsLoading(false)
     }
   }
 
-  if (isLoading) {
+  useEffect(() => {
+    checkPaymentStatus()
+  }, [])
+
+  const handleManualRetry = () => {
+    setRetryCount(0)
+    checkPaymentStatus(true)
+  }
+
+  if (isLoading && retryCount === 0) {
     return (
       <div className="container mx-auto py-8">
         <Card className="w-full max-w-md mx-auto">
@@ -114,7 +135,7 @@ export default function PaymentReturnPage() {
     )
   }
 
-  if (error) {
+  if (error && !paymentStatus) {
     return (
       <div className="container mx-auto py-8">
         <Card className="w-full max-w-md mx-auto">
@@ -132,8 +153,8 @@ export default function PaymentReturnPage() {
               </p>
             </div>
             <div className="flex gap-2">
-              <Button onClick={recheckStatus} disabled={isLoading} className="flex-1">
-                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              <Button onClick={handleManualRetry} disabled={isLoading} className="flex-1">
+                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
                 Check Status Again
               </Button>
               <Button variant="outline" onClick={() => (window.location.href = "/payment")} className="flex-1">
@@ -146,17 +167,34 @@ export default function PaymentReturnPage() {
     )
   }
 
-  const isSuccess = paymentStatus?.status === "AUTHORIZED" || paymentStatus?.status === "CAPTURED"
+  const isSuccess =
+    paymentStatus?.status === "AUTHORIZED" ||
+    paymentStatus?.status === "CAPTURED" ||
+    paymentStatus?.authorization?.authorized === "YES"
+
+  const isPending =
+    paymentStatus?.status === "PENDING" ||
+    paymentStatus?.status === "PENDING_AUTHORIZATION" ||
+    paymentStatus?.status === "CREATED"
 
   return (
     <div className="container mx-auto py-8">
       <Card className="w-full max-w-md mx-auto">
         <CardHeader>
-          <CardTitle className={`flex items-center ${isSuccess ? "text-green-600" : "text-red-600"}`}>
+          <CardTitle
+            className={`flex items-center ${
+              isSuccess ? "text-green-600" : isPending ? "text-orange-600" : "text-red-600"
+            }`}
+          >
             {isSuccess ? (
               <>
                 <CheckCircle className="mr-2 h-5 w-5" />
                 Payment Successful
+              </>
+            ) : isPending ? (
+              <>
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                Payment Processing
               </>
             ) : (
               <>
@@ -168,7 +206,9 @@ export default function PaymentReturnPage() {
           <CardDescription>
             {isSuccess
               ? "Your payment has been processed successfully."
-              : "There was an issue processing your payment."}
+              : isPending
+                ? "Your payment is being processed. Please wait..."
+                : "There was an issue processing your payment."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -178,21 +218,72 @@ export default function PaymentReturnPage() {
                 <span>Status:</span>
                 <span className="font-medium">{paymentStatus.status}</span>
               </div>
-              <div className="flex justify-between">
-                <span>Payment Reference:</span>
-                <span className="font-medium">{paymentStatus.payuPaymentReference}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Order Reference:</span>
-                <span className="font-medium">{paymentStatus.merchantPaymentReference}</span>
-              </div>
+              {paymentStatus.payuPaymentReference && (
+                <div className="flex justify-between">
+                  <span>Payment Reference:</span>
+                  <span className="font-medium font-mono text-xs">{paymentStatus.payuPaymentReference}</span>
+                </div>
+              )}
+              {paymentStatus.merchantPaymentReference && (
+                <div className="flex justify-between">
+                  <span>Order Reference:</span>
+                  <span className="font-medium font-mono text-xs">{paymentStatus.merchantPaymentReference}</span>
+                </div>
+              )}
+              {paymentStatus.amount && (
+                <div className="flex justify-between">
+                  <span>Amount:</span>
+                  <span className="font-medium">{paymentStatus.amount} RUB</span>
+                </div>
+              )}
             </div>
           )}
-          <Button className="w-full" onClick={() => (window.location.href = "/")}>
-            Return to Home
-          </Button>
+
+          {isPending && (
+            <div className="bg-orange-50 border border-orange-200 rounded p-3">
+              <p className="text-sm text-orange-700">
+                Payment is still being processed. We'll automatically check again in a few seconds.
+              </p>
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            {!isSuccess && (
+              <Button
+                onClick={handleManualRetry}
+                disabled={isLoading}
+                variant="outline"
+                className="flex-1 bg-transparent"
+              >
+                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                Check Again
+              </Button>
+            )}
+            <Button onClick={() => (window.location.href = "/")} className={!isSuccess ? "flex-1" : "w-full"}>
+              Return to Home
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function PaymentReturnPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="container mx-auto py-8">
+          <Card className="w-full max-w-md mx-auto">
+            <CardContent className="flex items-center justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin" />
+              <span className="ml-2">Loading...</span>
+            </CardContent>
+          </Card>
+        </div>
+      }
+    >
+      <PaymentReturnContent />
+    </Suspense>
   )
 }
