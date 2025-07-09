@@ -16,6 +16,7 @@ interface PaymentStatus {
   }
   message?: string
   isFromCallback?: boolean
+  timestamp?: string
 }
 
 export default function PaymentReturnPage() {
@@ -26,7 +27,7 @@ export default function PaymentReturnPage() {
   const [urlParams, setUrlParams] = useState<Record<string, string>>({})
   const { toast } = useToast()
 
-  // Safely extract URL parameters
+  // Safely extract URL parameters and localStorage data
   useEffect(() => {
     if (typeof window !== "undefined") {
       try {
@@ -44,11 +45,67 @@ export default function PaymentReturnPage() {
 
         setUrlParams(params)
 
-        // Check if we have callback data from PayU
+        // Check for callback data in localStorage (from the HTML response)
+        const callbackData = localStorage.getItem("payuCallbackData")
+        const callbackTimestamp = localStorage.getItem("payuCallbackTimestamp")
+
+        if (callbackData) {
+          try {
+            const parsedCallbackData = JSON.parse(callbackData)
+            console.log("✅ Found PayU callback data in localStorage:", parsedCallbackData)
+
+            // Check if the callback data is recent (within last 5 minutes)
+            const timestamp = Number.parseInt(callbackTimestamp || "0")
+            const isRecent = Date.now() - timestamp < 5 * 60 * 1000
+
+            if (isRecent) {
+              const callbackStatus: PaymentStatus = {
+                merchantPaymentReference: parsedCallbackData.merchantPaymentReference,
+                payuPaymentReference: parsedCallbackData.payuPaymentReference || "N/A",
+                status: parsedCallbackData.status,
+                message: parsedCallbackData.message,
+                isFromCallback: true,
+                timestamp: parsedCallbackData.timestamp,
+              }
+
+              setPaymentStatus(callbackStatus)
+              setIsLoading(false)
+
+              // Show appropriate toast
+              if (parsedCallbackData.isSuccess || parsedCallbackData.status === "SUCCESS") {
+                toast({
+                  title: "Payment Successful!",
+                  description: "Your payment has been processed successfully.",
+                })
+              } else {
+                toast({
+                  title: "Payment Status",
+                  description: `Payment status: ${parsedCallbackData.status}`,
+                  variant: parsedCallbackData.status === "SUCCESS" ? "default" : "destructive",
+                })
+              }
+
+              // Clean up localStorage after use
+              localStorage.removeItem("payuCallbackData")
+              localStorage.removeItem("payuCallbackTimestamp")
+
+              return // Don't proceed with other checks
+            } else {
+              console.log("Callback data is too old, ignoring")
+              localStorage.removeItem("payuCallbackData")
+              localStorage.removeItem("payuCallbackTimestamp")
+            }
+          } catch (error) {
+            console.error("Error parsing callback data:", error)
+            localStorage.removeItem("payuCallbackData")
+            localStorage.removeItem("payuCallbackTimestamp")
+          }
+        }
+
+        // Check if we have callback data from URL parameters
         if (params.reference && params.status) {
           console.log("✅ Found PayU callback data in URL parameters")
 
-          // Create payment status from URL parameters
           const callbackStatus: PaymentStatus = {
             merchantPaymentReference: params.reference,
             payuPaymentReference: params.payuRef || "N/A",
@@ -193,6 +250,8 @@ export default function PaymentReturnPage() {
     localStorage.removeItem("merchantPaymentReference")
     localStorage.removeItem("paymentStartTime")
     localStorage.removeItem("paymentAmount")
+    localStorage.removeItem("payuCallbackData")
+    localStorage.removeItem("payuCallbackTimestamp")
     window.location.href = "/"
   }
 
@@ -202,6 +261,8 @@ export default function PaymentReturnPage() {
     localStorage.removeItem("merchantPaymentReference")
     localStorage.removeItem("paymentStartTime")
     localStorage.removeItem("paymentAmount")
+    localStorage.removeItem("payuCallbackData")
+    localStorage.removeItem("payuCallbackTimestamp")
     window.location.href = "/payment"
   }
 
@@ -336,10 +397,10 @@ export default function PaymentReturnPage() {
                   <span className="font-medium">{paymentStatus.message}</span>
                 </div>
               )}
-              {paymentStatus.amount && (
+              {paymentStatus.timestamp && (
                 <div className="flex justify-between">
-                  <span>Amount:</span>
-                  <span className="font-medium">{paymentStatus.amount} RUB</span>
+                  <span>Processed:</span>
+                  <span className="font-medium text-xs">{new Date(paymentStatus.timestamp).toLocaleString()}</span>
                 </div>
               )}
             </div>

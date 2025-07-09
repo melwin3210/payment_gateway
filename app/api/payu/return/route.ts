@@ -1,5 +1,4 @@
 import { type NextRequest, NextResponse } from "next/server"
-import crypto from "crypto"
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,9 +37,6 @@ export async function POST(request: NextRequest) {
       hasSignature: !!signature,
     })
 
-    // TODO: Verify signature for security (optional but recommended)
-    // const isValidSignature = verifyPayUSignature(formFields.body, signature, merchant, date)
-
     // Extract payment information from the JSON payload
     const paymentInfo = {
       payuPaymentReference: payuData.payuPaymentReference,
@@ -59,11 +55,12 @@ export async function POST(request: NextRequest) {
 
     console.log("Extracted payment info:", paymentInfo)
 
-    // Store payment result in localStorage-compatible format for the frontend
-    // In production, you'd store this in a database
+    // Store payment result temporarily (in production, use a database)
+    // For now, we'll pass it via URL parameters
 
     // Create redirect URL with payment information
-    const redirectUrl = new URL("/payment/return", request.url)
+    const baseUrl = request.url.replace("/api/payu/return", "")
+    const redirectUrl = new URL("/payment/return", baseUrl)
 
     // Add essential parameters to the URL
     if (paymentInfo.merchantPaymentReference) {
@@ -82,7 +79,7 @@ export async function POST(request: NextRequest) {
       redirectUrl.searchParams.set("message", encodeURIComponent(paymentInfo.message))
     }
 
-    console.log("Redirecting to:", redirectUrl.toString())
+    console.log("Will redirect browser to:", redirectUrl.toString())
 
     // Log success/failure
     if (paymentInfo.isSuccess) {
@@ -91,24 +88,167 @@ export async function POST(request: NextRequest) {
       console.log("❌ PAYMENT FAILED - Status:", paymentInfo.status, "Code:", paymentInfo.code)
     }
 
-    // Return a redirect response
-    return NextResponse.redirect(redirectUrl.toString())
+    // Return HTML with JavaScript redirect (this will work for server-to-server POST)
+    const htmlResponse = `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Payment Processing</title>
+    <meta charset="utf-8">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f5f5f5;
+        }
+        .container {
+            text-align: center;
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            max-width: 400px;
+        }
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .success { color: #27ae60; }
+        .error { color: #e74c3c; }
+        .pending { color: #f39c12; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="spinner"></div>
+        <h2>Processing Payment Result</h2>
+        <p class="${paymentInfo.isSuccess ? "success" : paymentInfo.status === "PENDING" ? "pending" : "error"}">
+            ${
+              paymentInfo.isSuccess
+                ? "✅ Payment Successful!"
+                : paymentInfo.status === "PENDING"
+                  ? "⏳ Payment Processing..."
+                  : "❌ Payment Failed"
+            }
+        </p>
+        <p>Redirecting you to the results page...</p>
+        <p><small>Reference: ${paymentInfo.merchantPaymentReference || "N/A"}</small></p>
+    </div>
+
+    <script>
+        console.log('PayU callback received:', ${JSON.stringify(paymentInfo)});
+        
+        // Store payment info in localStorage for the frontend
+        try {
+            localStorage.setItem('payuCallbackData', ${JSON.stringify(JSON.stringify(paymentInfo))});
+            localStorage.setItem('payuCallbackTimestamp', Date.now().toString());
+        } catch (e) {
+            console.warn('Could not store callback data in localStorage:', e);
+        }
+        
+        // Redirect after a short delay
+        setTimeout(function() {
+            window.location.href = '${redirectUrl.toString()}';
+        }, 2000);
+        
+        // Fallback: redirect immediately if user clicks
+        document.addEventListener('click', function() {
+            window.location.href = '${redirectUrl.toString()}';
+        });
+        
+        // Auto-redirect after 5 seconds as failsafe
+        setTimeout(function() {
+            if (window.location.href.indexOf('/payment/return') === -1) {
+                window.location.href = '${redirectUrl.toString()}';
+            }
+        }, 5000);
+    </script>
+</body>
+</html>`
+
+    // Return HTML response
+    return new Response(htmlResponse, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        Pragma: "no-cache",
+        Expires: "0",
+      },
+    })
   } catch (error) {
     console.error("❌ Error handling PayU return POST:", error)
 
-    // Even if there's an error, redirect to the return page with error info
-    const redirectUrl = new URL("/payment/return", request.url)
-    redirectUrl.searchParams.set("error", "processing_failed")
-    redirectUrl.searchParams.set(
-      "errorMessage",
-      encodeURIComponent(error instanceof Error ? error.message : "Unknown error"),
-    )
+    // Return error HTML
+    const errorHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Payment Processing Error</title>
+    <meta charset="utf-8">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f5f5f5;
+        }
+        .container {
+            text-align: center;
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            max-width: 400px;
+        }
+        .error { color: #e74c3c; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2 class="error">❌ Processing Error</h2>
+        <p>There was an error processing the payment callback.</p>
+        <p>Redirecting to payment status page...</p>
+        <button onclick="redirect()">Continue</button>
+    </div>
 
-    return NextResponse.redirect(redirectUrl.toString())
+    <script>
+        function redirect() {
+            window.location.href = '/payment/return?error=processing_failed';
+        }
+        
+        // Auto-redirect after 3 seconds
+        setTimeout(redirect, 3000);
+    </script>
+</body>
+</html>`
+
+    return new Response(errorHtml, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+      },
+    })
   }
 }
 
-// Also handle GET requests (in case PayU uses GET sometimes)
+// Handle GET requests (in case PayU uses GET sometimes)
 export async function GET(request: NextRequest) {
   console.log("=== PayU Return GET Request ===")
 
@@ -116,7 +256,7 @@ export async function GET(request: NextRequest) {
   const searchParams = Object.fromEntries(url.searchParams.entries())
   console.log("GET parameters:", searchParams)
 
-  // Just redirect to the return page with the parameters
+  // For GET requests, we can use a normal redirect
   const redirectUrl = new URL("/payment/return", request.url)
 
   // Copy all search parameters
@@ -127,25 +267,4 @@ export async function GET(request: NextRequest) {
   console.log("GET redirect to:", redirectUrl.toString())
 
   return NextResponse.redirect(redirectUrl.toString())
-}
-
-// Optional: Add signature verification function for security
-function verifyPayUSignature(body: string, signature: string, merchant: string, date: string): boolean {
-  try {
-    // This is a placeholder - you'd need to implement PayU's signature verification
-    // according to their documentation
-    const secretKey = process.env.PAYU_SECRET_KEY!
-
-    // Example signature verification (adjust according to PayU's spec)
-    const stringToHash = merchant + date + body
-    const expectedSignature = crypto.createHmac("sha256", secretKey).update(stringToHash).digest("hex")
-
-    const isValid = signature === expectedSignature
-    console.log("Signature verification:", { isValid, provided: signature, expected: expectedSignature })
-
-    return isValid
-  } catch (error) {
-    console.error("Signature verification error:", error)
-    return false
-  }
 }
