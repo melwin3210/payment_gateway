@@ -6,6 +6,7 @@ import {
   createPayUHeaders,
   getPayUConfig,
   secureApiCall,
+  generatePayUDate, // Add this import
   type PaymentRequest,
   type PaymentResponse,
 } from "@/lib/payu-utils"
@@ -18,7 +19,10 @@ export async function POST(request: NextRequest) {
     // Generate unique references
     const merchantPaymentReference = generateMerchantReference()
     const idempotencyKey = generateIdempotencyKey()
-    const requestDate = new Date().toISOString()
+    const requestDate = generatePayUDate() // Try the GMT format first
+
+    // Add logging to see what date format we're sending
+    console.log("Generated request date:", requestDate)
 
     // Prepare payment request
     const paymentRequest: PaymentRequest = {

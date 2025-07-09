@@ -4,6 +4,7 @@ import {
   createPayUHeaders,
   getPayUConfig,
   secureApiCall,
+  generatePayUDate, // Add this import
   type CaptureRequest,
 } from "@/lib/payu-utils"
 
@@ -11,7 +12,9 @@ export async function POST(request: NextRequest) {
   try {
     const config = getPayUConfig()
     const body = await request.json()
-    const requestDate = new Date().toISOString()
+    // Replace the requestDate line with:
+    const requestDate = generatePayUDate()
+    console.log("Generated request date for capture:", requestDate)
 
     const captureRequest: CaptureRequest = {
       payuPaymentReference: body.payuPaymentReference,

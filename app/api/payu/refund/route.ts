@@ -4,6 +4,7 @@ import {
   createPayUHeaders,
   getPayUConfig,
   secureApiCall,
+  generatePayUDate, // Add this import
   type RefundRequest,
 } from "@/lib/payu-utils"
 
@@ -11,7 +12,8 @@ export async function POST(request: NextRequest) {
   try {
     const config = getPayUConfig()
     const body = await request.json()
-    const requestDate = new Date().toISOString()
+    const requestDate = generatePayUDate()
+    console.log("Generated request date for refund:", requestDate)
 
     const refundRequest: RefundRequest = {
       payuPaymentReference: body.payuPaymentReference,

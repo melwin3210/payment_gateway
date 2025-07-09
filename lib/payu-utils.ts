@@ -105,6 +105,46 @@ export function createPayUHeaders(
   return headers
 }
 
+// Add this function after the existing utility functions
+export function generatePayUDate(): string {
+  // PayU typically expects date in GMT format: "EEE, dd MMM yyyy HH:mm:ss GMT"
+  // Example: "Mon, 09 Dec 2024 14:30:45 GMT"
+  const now = new Date()
+
+  // Format: "EEE, dd MMM yyyy HH:mm:ss GMT"
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+  const dayName = dayNames[now.getUTCDay()]
+  const day = now.getUTCDate().toString().padStart(2, "0")
+  const monthName = monthNames[now.getUTCMonth()]
+  const year = now.getUTCFullYear()
+  const hours = now.getUTCHours().toString().padStart(2, "0")
+  const minutes = now.getUTCMinutes().toString().padStart(2, "0")
+  const seconds = now.getUTCSeconds().toString().padStart(2, "0")
+
+  return `${dayName}, ${day} ${monthName} ${year} ${hours}:${minutes}:${seconds} GMT`
+}
+
+// Alternative simpler format that some PayU implementations use
+export function generatePayUDateSimple(): string {
+  // Some PayU APIs expect: "yyyy-MM-dd HH:mm:ss"
+  const now = new Date()
+  const year = now.getUTCFullYear()
+  const month = (now.getUTCMonth() + 1).toString().padStart(2, "0")
+  const day = now.getUTCDate().toString().padStart(2, "0")
+  const hours = now.getUTCHours().toString().padStart(2, "0")
+  const minutes = now.getUTCMinutes().toString().padStart(2, "0")
+  const seconds = now.getUTCSeconds().toString().padStart(2, "0")
+
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
+}
+
+// ISO format with timezone
+export function generatePayUDateISO(): string {
+  return new Date().toISOString()
+}
+
 // Create a custom fetch function with SSL options for development
 export async function secureApiCall(url: string, options: RequestInit): Promise<Response> {
   // For development environment, we might need to handle SSL differently

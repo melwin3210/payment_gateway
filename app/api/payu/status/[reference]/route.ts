@@ -1,10 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { generateSignature, createPayUHeaders, getPayUConfig, secureApiCall } from "@/lib/payu-utils"
+import { generateSignature, createPayUHeaders, getPayUConfig, secureApiCall, generatePayUDate } from "@/lib/payu-utils"
 
 export async function GET(request: NextRequest, { params }: { params: { reference: string } }) {
   try {
     const config = getPayUConfig()
-    const requestDate = new Date().toISOString()
+    const requestDate = generatePayUDate()
+    console.log("Generated request date for status check:", requestDate)
     const path = `/api/v4/payments/status/${params.reference}`
 
     // Generate signature for GET request (empty body)
