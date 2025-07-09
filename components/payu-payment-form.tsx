@@ -67,9 +67,8 @@ export default function PayUPaymentForm() {
     setPaymentResult(null)
 
     try {
-      // Create a proper return URL
-      const baseUrl = window.location.origin
-      const returnUrl = `${baseUrl}/payment/return`
+      // Create a simple return URL without complex parameters
+      const returnUrl = `${window.location.protocol}//${window.location.host}/payment/return`
 
       console.log("Creating payment with return URL:", returnUrl)
 
@@ -125,26 +124,42 @@ export default function PayUPaymentForm() {
   }
 
   const handleRedirectToPayment = () => {
-    if (paymentResult?.data?.paymentResult?.url) {
-      console.log("Redirecting to PayU URL:", paymentResult.data.paymentResult.url)
+    const paymentUrl = paymentResult?.data?.paymentResult?.url
 
-      toast({
-        title: "Redirecting to PayU",
-        description: "Complete your payment and you'll be redirected back",
-        duration: 3000,
-      })
-
-      // Use window.location.href for better compatibility
-      setTimeout(() => {
-        window.location.href = paymentResult.data.paymentResult.url
-      }, 1000)
-    } else {
+    if (!paymentUrl) {
       toast({
         title: "Error",
         description: "Payment URL not found. Please try again.",
         variant: "destructive",
       })
+      return
     }
+
+    console.log("Redirecting to PayU URL:", paymentUrl)
+
+    // Validate URL before redirecting
+    try {
+      new URL(paymentUrl)
+    } catch (error) {
+      console.error("Invalid payment URL:", paymentUrl)
+      toast({
+        title: "Error",
+        description: "Invalid payment URL received from PayU.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    toast({
+      title: "Redirecting to PayU",
+      description: "Complete your payment and you'll be redirected back",
+      duration: 3000,
+    })
+
+    // Use a simple redirect
+    setTimeout(() => {
+      window.location.href = paymentUrl
+    }, 1000)
   }
 
   if (paymentResult) {
@@ -198,8 +213,23 @@ export default function PayUPaymentForm() {
             <p>• You will be redirected to PayU's secure payment page</p>
             <p>• After payment, you'll automatically return to see the final status</p>
             <p>• This is a sandbox environment - use test card details</p>
-            <p>• Payment URL: {paymentResult.data.paymentResult?.url ? "✅ Ready" : "❌ Missing"}</p>
+            <p>
+              • Payment URL:{" "}
+              {paymentResult.data.paymentResult?.url ? (
+                <span className="text-green-600">✅ Ready</span>
+              ) : (
+                <span className="text-red-600">❌ Missing</span>
+              )}
+            </p>
           </div>
+
+          {/* Debug info */}
+          <details className="text-xs text-gray-400">
+            <summary className="cursor-pointer">Debug Info</summary>
+            <pre className="mt-2 p-2 bg-gray-100 rounded text-xs overflow-auto">
+              {JSON.stringify(paymentResult, null, 2)}
+            </pre>
+          </details>
         </CardContent>
       </Card>
     )

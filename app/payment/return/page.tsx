@@ -1,10 +1,9 @@
 "use client"
 
-import { useEffect, useState, Suspense } from "react"
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { CheckCircle, XCircle, Loader2, RefreshCw } from "lucide-react"
-import { useSearchParams } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 
 interface PaymentStatus {
@@ -17,12 +16,11 @@ interface PaymentStatus {
   }
 }
 
-function PaymentReturnContent() {
+export default function PaymentReturnPage() {
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [retryCount, setRetryCount] = useState(0)
-  const searchParams = useSearchParams()
   const { toast } = useToast()
 
   const checkPaymentStatus = async (isManualRetry = false) => {
@@ -32,11 +30,14 @@ function PaymentReturnContent() {
     setError(null)
 
     try {
-      // Get payment reference from URL params or localStorage
-      const merchantRef =
-        searchParams.get("merchantPaymentReference") ||
-        searchParams.get("reference") ||
-        localStorage.getItem("merchantPaymentReference")
+      // Get payment reference from localStorage first, then URL
+      let merchantRef = localStorage.getItem("merchantPaymentReference")
+
+      // If not in localStorage, try to get from URL
+      if (!merchantRef && typeof window !== "undefined") {
+        const urlParams = new URLSearchParams(window.location.search)
+        merchantRef = urlParams.get("merchantPaymentReference") || urlParams.get("reference")
+      }
 
       console.log("Checking payment status for reference:", merchantRef)
 
@@ -110,12 +111,35 @@ function PaymentReturnContent() {
   }
 
   useEffect(() => {
-    checkPaymentStatus()
+    // Small delay to ensure component is mounted
+    const timer = setTimeout(() => {
+      checkPaymentStatus()
+    }, 100)
+
+    return () => clearTimeout(timer)
   }, [])
 
   const handleManualRetry = () => {
     setRetryCount(0)
     checkPaymentStatus(true)
+  }
+
+  const goHome = () => {
+    // Clear localStorage and go home
+    localStorage.removeItem("payuPaymentReference")
+    localStorage.removeItem("merchantPaymentReference")
+    localStorage.removeItem("paymentStartTime")
+    localStorage.removeItem("paymentAmount")
+    window.location.href = "/"
+  }
+
+  const startNewPayment = () => {
+    // Clear localStorage and go to payment page
+    localStorage.removeItem("payuPaymentReference")
+    localStorage.removeItem("merchantPaymentReference")
+    localStorage.removeItem("paymentStartTime")
+    localStorage.removeItem("paymentAmount")
+    window.location.href = "/payment"
   }
 
   if (isLoading && retryCount === 0) {
@@ -155,9 +179,9 @@ function PaymentReturnContent() {
             <div className="flex gap-2">
               <Button onClick={handleManualRetry} disabled={isLoading} className="flex-1">
                 {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                Check Status Again
+                Check Again
               </Button>
-              <Button variant="outline" onClick={() => (window.location.href = "/payment")} className="flex-1">
+              <Button variant="outline" onClick={startNewPayment} className="flex-1 bg-transparent">
                 New Payment
               </Button>
             </div>
@@ -259,31 +283,12 @@ function PaymentReturnContent() {
                 Check Again
               </Button>
             )}
-            <Button onClick={() => (window.location.href = "/")} className={!isSuccess ? "flex-1" : "w-full"}>
+            <Button onClick={goHome} className={!isSuccess ? "flex-1" : "w-full"}>
               Return to Home
             </Button>
           </div>
         </CardContent>
       </Card>
     </div>
-  )
-}
-
-export default function PaymentReturnPage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="container mx-auto py-8">
-          <Card className="w-full max-w-md mx-auto">
-            <CardContent className="flex items-center justify-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin" />
-              <span className="ml-2">Loading...</span>
-            </CardContent>
-          </Card>
-        </div>
-      }
-    >
-      <PaymentReturnContent />
-    </Suspense>
   )
 }
