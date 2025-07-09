@@ -21,7 +21,32 @@ export default function PaymentReturnPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [retryCount, setRetryCount] = useState(0)
+  const [urlParams, setUrlParams] = useState<Record<string, string>>({})
   const { toast } = useToast()
+
+  // Safely extract URL parameters
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const params: Record<string, string> = {}
+        const urlSearchParams = new URLSearchParams(window.location.search)
+
+        // Log all parameters for debugging
+        console.log("URL search string:", window.location.search)
+        console.log("Full URL:", window.location.href)
+
+        for (const [key, value] of urlSearchParams.entries()) {
+          params[key] = value
+          console.log(`URL param: ${key} = ${value}`)
+        }
+
+        setUrlParams(params)
+      } catch (error) {
+        console.error("Error parsing URL parameters:", error)
+        // Continue without URL params
+      }
+    }
+  }, [])
 
   const checkPaymentStatus = async (isManualRetry = false) => {
     if (!isManualRetry) {
@@ -30,24 +55,31 @@ export default function PaymentReturnPage() {
     setError(null)
 
     try {
-      // Get payment reference from localStorage first, then URL
-      let merchantRef = localStorage.getItem("merchantPaymentReference")
+      // Try multiple sources for the payment reference
+      const merchantRef =
+        // First try localStorage
+        localStorage.getItem("merchantPaymentReference") ||
+        // Then try URL parameters
+        urlParams.merchantPaymentReference ||
+        urlParams.reference ||
+        urlParams.orderRef ||
+        // Try other common parameter names PayU might use
+        urlParams.merchant_reference ||
+        urlParams.order_id
 
-      // If not in localStorage, try to get from URL
-      if (!merchantRef && typeof window !== "undefined") {
-        const urlParams = new URLSearchParams(window.location.search)
-        merchantRef = urlParams.get("merchantPaymentReference") || urlParams.get("reference")
-      }
-
+      console.log("Available URL params:", urlParams)
       console.log("Checking payment status for reference:", merchantRef)
 
       if (!merchantRef) {
-        throw new Error("No payment reference found. Please start a new payment.")
+        // If no reference found, show a helpful message
+        throw new Error(
+          "No payment reference found. This usually means you accessed this page directly. Please start a new payment.",
+        )
       }
 
       // For first check, wait a bit to allow payment processing
       if (!isManualRetry && retryCount === 0) {
-        console.log("First check - waiting 3 seconds...")
+        console.log("First check - waiting 3 seconds for payment processing...")
         await new Promise((resolve) => setTimeout(resolve, 3000))
       }
 
@@ -58,7 +90,6 @@ export default function PaymentReturnPage() {
 
       if (result.success) {
         const status = result.data.status || result.data.authorization?.authorized || "UNKNOWN"
-
         console.log("Payment status:", status)
 
         // Check if payment is still processing
@@ -111,13 +142,13 @@ export default function PaymentReturnPage() {
   }
 
   useEffect(() => {
-    // Small delay to ensure component is mounted
+    // Wait for URL params to be parsed before checking status
     const timer = setTimeout(() => {
       checkPaymentStatus()
-    }, 100)
+    }, 500)
 
     return () => clearTimeout(timer)
-  }, [])
+  }, [urlParams])
 
   const handleManualRetry = () => {
     setRetryCount(0)
@@ -171,6 +202,18 @@ export default function PaymentReturnPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm">{error}</p>
+
+            {/* Debug information */}
+            <div className="bg-gray-50 border border-gray-200 rounded p-3 text-xs">
+              <p className="font-semibold mb-2">Debug Information:</p>
+              <p>URL: {typeof window !== "undefined" ? window.location.href : "N/A"}</p>
+              <p>URL Params: {JSON.stringify(urlParams)}</p>
+              <p>
+                LocalStorage Ref:{" "}
+                {typeof window !== "undefined" ? localStorage.getItem("merchantPaymentReference") : "N/A"}
+              </p>
+            </div>
+
             <div className="bg-blue-50 border border-blue-200 rounded p-3">
               <p className="text-sm text-blue-700 mb-2">
                 If you just completed payment on PayU, it may take a moment to process.
@@ -270,6 +313,22 @@ export default function PaymentReturnPage() {
               </p>
             </div>
           )}
+
+          {/* Debug section for troubleshooting */}
+          <details className="text-xs text-gray-400">
+            <summary className="cursor-pointer">Debug Information</summary>
+            <div className="mt-2 p-2 bg-gray-100 rounded text-xs">
+              <p>
+                <strong>URL:</strong> {typeof window !== "undefined" ? window.location.href : "N/A"}
+              </p>
+              <p>
+                <strong>URL Params:</strong> {JSON.stringify(urlParams, null, 2)}
+              </p>
+              <p>
+                <strong>Payment Status:</strong> {JSON.stringify(paymentStatus, null, 2)}
+              </p>
+            </div>
+          </details>
 
           <div className="flex gap-2">
             {!isSuccess && (

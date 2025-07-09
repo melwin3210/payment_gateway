@@ -67,10 +67,13 @@ export default function PayUPaymentForm() {
     setPaymentResult(null)
 
     try {
-      // Create a simple return URL without complex parameters
-      const returnUrl = `${window.location.protocol}//${window.location.host}/payment/return`
+      // Create multiple return URLs for different scenarios
+      const baseUrl = `${window.location.protocol}//${window.location.host}`
+      const returnUrl = `${baseUrl}/payment/return`
+      const successUrl = `${baseUrl}/payment/success`
 
       console.log("Creating payment with return URL:", returnUrl)
+      console.log("Success URL:", successUrl)
 
       const response = await fetch("/api/payu/authorize", {
         method: "POST",
@@ -80,7 +83,7 @@ export default function PayUPaymentForm() {
         body: JSON.stringify({
           paymentMethod: formData.paymentMethod,
           currency: "RUB",
-          returnUrl: returnUrl,
+          returnUrl: returnUrl, // Use the simple return URL
           client: {
             firstName: formData.firstName,
             lastName: formData.lastName,
@@ -139,7 +142,8 @@ export default function PayUPaymentForm() {
 
     // Validate URL before redirecting
     try {
-      new URL(paymentUrl)
+      const url = new URL(paymentUrl)
+      console.log("Valid PayU URL:", url.toString())
     } catch (error) {
       console.error("Invalid payment URL:", paymentUrl)
       toast({
@@ -156,10 +160,17 @@ export default function PayUPaymentForm() {
       duration: 3000,
     })
 
-    // Use a simple redirect
-    setTimeout(() => {
-      window.location.href = paymentUrl
-    }, 1000)
+    // Use window.open as a fallback option
+    const openPayment = () => {
+      try {
+        window.location.href = paymentUrl
+      } catch (error) {
+        console.error("Redirect failed, trying window.open:", error)
+        window.open(paymentUrl, "_self")
+      }
+    }
+
+    setTimeout(openPayment, 1000)
   }
 
   if (paymentResult) {
@@ -209,18 +220,26 @@ export default function PayUPaymentForm() {
             </Button>
           </div>
 
-          <div className="text-xs text-gray-500 space-y-1">
-            <p>• You will be redirected to PayU's secure payment page</p>
-            <p>• After payment, you'll automatically return to see the final status</p>
-            <p>• This is a sandbox environment - use test card details</p>
-            <p>
-              • Payment URL:{" "}
-              {paymentResult.data.paymentResult?.url ? (
-                <span className="text-green-600">✅ Ready</span>
-              ) : (
-                <span className="text-red-600">❌ Missing</span>
-              )}
-            </p>
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <h3 className="font-semibold mb-2 text-yellow-800">Important Notes:</h3>
+            <ul className="text-sm text-yellow-700 space-y-1">
+              <li>• You will be redirected to PayU's secure payment page</li>
+              <li>• After payment, you'll automatically return to see the final status</li>
+              <li>• If the redirect doesn't work, manually go to /payment/return</li>
+              <li>• This is a sandbox environment - use test card details</li>
+            </ul>
+          </div>
+
+          {/* Manual fallback link */}
+          <div className="text-center">
+            <p className="text-sm text-gray-600 mb-2">If automatic redirect fails:</p>
+            <Button
+              variant="outline"
+              onClick={() => (window.location.href = "/payment/return")}
+              className="bg-transparent"
+            >
+              Go to Payment Status Page
+            </Button>
           </div>
 
           {/* Debug info */}
