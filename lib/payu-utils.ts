@@ -11,8 +11,8 @@ export interface PaymentRequest {
   currency: string
   returnUrl: string
   authorization: {
-    paymentMethod: "CCVISAMC"
-    usePaymentPage: "YES"
+    paymentMethod: "CCVISAMC" | "FASTER_PAYMENTS" | "SBERPAY" | "TPAY" | "ALFAPAY"
+    usePaymentPage?: "YES" | "NO"
   }
   client: {
     billing: {

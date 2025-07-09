@@ -24,8 +24,8 @@ export async function POST(request: NextRequest) {
       currency: body.currency || "RUB",
       returnUrl: body.returnUrl,
       authorization: {
-        paymentMethod: "CCVISAMC",
-        usePaymentPage: "YES",
+        paymentMethod: body.paymentMethod || "CCVISAMC",
+        usePaymentPage: body.paymentMethod === "CCVISAMC" ? "YES" : undefined,
       },
       client: {
         billing: {
